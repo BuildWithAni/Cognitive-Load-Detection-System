@@ -1,0 +1,21 @@
+# Frontend
+node_modules/
+dist/
+dist-ssr/
+*.local
+.vscode/
+
+# Backend
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+ENV/
+env/
+.env
+.venv
+model.pkl
+
+# System
+.DS_Store
+Thumbs.db

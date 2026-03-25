@@ -2,7 +2,9 @@ import cv2
 import mediapipe as mp
 import numpy as np
 import time
+import threading
 from collections import deque
+from pynput import mouse, keyboard
 
 mp_face_mesh = mp.solutions.face_mesh
 face_mesh = mp_face_mesh.FaceMesh(
@@ -13,36 +15,30 @@ face_mesh = mp_face_mesh.FaceMesh(
     min_tracking_confidence=0.5
 )
 
-# Eye landmark indices
+# Landmark indices
 LEFT_EYE = [33, 160, 158, 133, 153, 144]
 RIGHT_EYE = [362, 385, 387, 263, 373, 380]
+INNER_BROWS = [107, 336] # Inner points of left and right brows
+INNER_LIPS = [13, 14]   # Top and bottom of inner mouth
 
 def eye_aspect_ratio(landmarks, eye_indices):
-    # landmarks are normalized (x,y) in image coordinates
-    p1 = landmarks[eye_indices[0]]
-    p2 = landmarks[eye_indices[1]]
-    p3 = landmarks[eye_indices[2]]
-    p4 = landmarks[eye_indices[3]]
-    p5 = landmarks[eye_indices[4]]
-    p6 = landmarks[eye_indices[5]]
-    
-    # Compute vertical distances
-    v1 = np.linalg.norm(p2 - p6)
-    v2 = np.linalg.norm(p3 - p5)
-    # Horizontal distance
-    h = np.linalg.norm(p1 - p4)
-    ear = (v1 + v2) / (2.0 * h + 1e-6)
-    return ear
+    p = landmarks[eye_indices]
+    v1 = np.linalg.norm(p[1] - p[5])
+    v2 = np.linalg.norm(p[2] - p[4])
+    h = np.linalg.norm(p[0] - p[3])
+    return (v1 + v2) / (2.0 * h + 1e-6)
 
-class BlinkDetector:
-    def __init__(self, blink_thresh=0.2, consec_frames=2):
+class FaceAnalyzer:
+    def __init__(self, blink_thresh=0.25):
         self.blink_thresh = blink_thresh
-        self.consec_frames = consec_frames
-        self.ear_history = deque(maxlen=consec_frames)
         self.blink_counter = 0
-        self.total_frames = 0
-        self.last_blink_time = None
-        self.blink_timestamps = deque(maxlen=100)  # store timestamps of blinks
+        self.last_blink_time = 0
+        self.blink_timestamps = deque(maxlen=100)
+        
+        # Expressions
+        self.current_ear = 0.0
+        self.brow_dist_norm = 0.0
+        self.mouth_ratio = 0.0
 
     def process_frame(self, frame):
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -54,43 +50,94 @@ class BlinkDetector:
         landmarks = results.multi_face_landmarks[0].landmark
         points = np.array([(lm.x * w, lm.y * h) for lm in landmarks])
         
+        # 1. Blink Detection
         left_ear = eye_aspect_ratio(points, LEFT_EYE)
         right_ear = eye_aspect_ratio(points, RIGHT_EYE)
-        ear = (left_ear + right_ear) / 2.0
+        self.current_ear = (left_ear + right_ear) / 2.0
         
-        self.ear_history.append(ear)
-        if len(self.ear_history) >= self.consec_frames:
-            # Detect blink if EAR drops below threshold for consecutive frames
-            if all(e < self.blink_thresh for e in self.ear_history):
-                # Check if we haven't recorded a blink too recently
-                now = time.time()
-                if self.last_blink_time is None or (now - self.last_blink_time) > 0.3:
-                    self.blink_timestamps.append(now)
-                    self.last_blink_time = now
-                    self.blink_counter += 1
-            # Reset history to avoid multiple detections for same blink
-            self.ear_history.clear()
-        
-        return ear
-
-    def get_blink_rate(self, window_seconds=10):
         now = time.time()
-        # Keep only blinks within the window
+        if self.current_ear < self.blink_thresh:
+            if now - self.last_blink_time > 0.3:
+                self.blink_timestamps.append(now)
+                self.blink_counter += 1
+                self.last_blink_time = now
+        
+        # 2. Brow Furrow (Distance between brows relative to head width)
+        # Head width approx distance between outer eyes [33, 263]
+        head_width = np.linalg.norm(points[33] - points[263])
+        brow_dist = np.linalg.norm(points[INNER_BROWS[0]] - points[INNER_BROWS[1]])
+        self.brow_dist_norm = brow_dist / head_width if head_width > 0 else 1.0
+        
+        # 3. Mouth Opening (Distance relative to face height [10, 152])
+        face_height = np.linalg.norm(points[10] - points[152])
+        mouth_dist = np.linalg.norm(points[INNER_LIPS[0]] - points[INNER_LIPS[1]])
+        self.mouth_ratio = mouth_dist / face_height if face_height > 0 else 0.0
+        
+        return self.current_ear
+
+    def get_blink_rate(self, window_seconds=5):
+        now = time.time()
         while self.blink_timestamps and now - self.blink_timestamps[0] > window_seconds:
             self.blink_timestamps.popleft()
-        # Blinks per minute
-        if len(self.blink_timestamps) < 2:
-            return 0.0
-        # Compute rate based on first and last blink in window
-        time_span = self.blink_timestamps[-1] - self.blink_timestamps[0]
-        if time_span > 0:
-            rate = (len(self.blink_timestamps) - 1) * 60.0 / time_span
-            return min(rate, 60.0)  # cap at 60 blinks/min
-        return 0.0
+        return (len(self.blink_timestamps) * 60.0) / window_seconds
 
-    def reset(self):
-        self.blink_counter = 0
-        self.total_frames = 0
-        self.ear_history.clear()
-        self.blink_timestamps.clear()
-        self.last_blink_time = None
+class GlobalInputTracker:
+    def __init__(self):
+        self.key_count = 0
+        self.backspace_count = 0
+        self.mouse_distance = 0.0
+        self.last_mouse_pos = None
+        self.start_time = time.time()
+        
+        # Threading for listeners
+        self.mouse_listener = mouse.Listener(on_move=self._on_move)
+        self.key_listener = keyboard.Listener(on_press=self._on_press)
+
+    def start(self):
+        try:
+            self.mouse_listener.start()
+            self.key_listener.start()
+            print("INFO: Global input listeners started successfully.")
+        except Exception as e:
+            print(f"WARNING: Could not start global input listeners: {e}")
+            print("Note: On some systems, this requires specific permissions.")
+
+    def _on_move(self, x, y):
+        if self.last_mouse_pos:
+            dx = x - self.last_mouse_pos[0]
+            dy = y - self.last_mouse_pos[1]
+            dist = np.sqrt(dx*dx + dy*dy)
+            # Limit huge jumps (multi-monitor/teleport)
+            if dist < 500:
+                self.mouse_distance += dist
+        self.last_mouse_pos = (x, y)
+
+    def _on_press(self, key):
+        self.key_count += 1
+        if key == keyboard.Key.backspace:
+            self.backspace_count += 1
+
+    def get_stats(self, window_seconds=2):
+        now = time.time()
+        duration = now - self.start_time
+        if duration < 0.1: return {"wpm": 0, "error_rate": 0, "mouse_speed": 0}
+        
+        # WPM: (keys/5) / (duration/60)
+        wpm = (self.key_count / 5.0) / (duration / 60.0)
+        # Error rate
+        total_keys = self.key_count + self.backspace_count
+        error_rate = self.backspace_count / total_keys if total_keys > 0 else 0
+        # Mouse speed
+        mouse_speed = self.mouse_distance / duration # px/s
+        
+        # Reset counters after snapshot
+        self.key_count = 0
+        self.backspace_count = 0
+        self.mouse_distance = 0
+        self.start_time = now
+        
+        return {
+            "wpm": min(wpm, 150),
+            "error_rate": min(error_rate, 0.5),
+            "mouse_speed": min(mouse_speed / 10, 100) # norm 0-100
+        }
