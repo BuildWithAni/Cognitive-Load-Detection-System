@@ -1,6 +1,6 @@
 ## README.md
 
-```markdown
+
 # Cognitive Load Detection System
 
 A real‑time, end‑to‑end system that measures cognitive load using facial analysis (blink rate), keyboard/mouse dynamics, and machine learning.
@@ -81,36 +81,5 @@ MIT
 - MediaPipe for face mesh
 - OpenCV for image processing
 - scikit‑learn for ML pipeline
-```
 
----
 
-## LinkedIn Post
-
-**Headline:** I built a real‑time Cognitive Load Detection System using AI & full‑stack development! 🧠🚀
-
-**Body:**  
-Ever wondered how your brain reacts when you're under stress?  
-I created a system that detects cognitive load in real‑time by analyzing:
-
-✅ **Facial cues** – blink rate via webcam  
-✅ **Typing dynamics** – WPM & error rate  
-✅ **Mouse movement** – intensity  
-✅ **ML classification** (RandomForest) → LOW / MEDIUM / HIGH load
-
-The entire stack is open‑source and built with:  
-🔹 React + Tailwind (frontend)  
-🔹 FastAPI + Python (backend)  
-🔹 OpenCV + MediaPipe (face/eye tracking)  
-🔹 scikit‑learn (ML)
-
-**No face data is stored or shared** – everything runs locally or through your own server. Privacy‑friendly! 👁️‍🗨️
-
-Check out the GitHub repo for full code and instructions: [insert link]
-
-I’d love to hear your thoughts – feel free to fork, star, or suggest improvements!  
-#CognitiveLoad #AI #MachineLearning #React #FastAPI #OpenCV #FullStack #OpenSource
-
----
-
-**Note for user:** The post is written so you don't need to show your face. You can share a screenshot of the dashboard or a diagram instead of a personal photo.
