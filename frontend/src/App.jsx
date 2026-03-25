@@ -37,6 +37,18 @@ function App() {
         return () => clearInterval(intv);
     }, []);
 
+    const [loadScore, setLoadScore] = useState(0);
+
+    // Reactive Score Calculation (Less Sensitive)
+    useEffect(() => {
+        // 60 bpm = 5 points (Calibrated for high detected rates)
+        const blinkScore = (blinkData.blink_rate / 60) * 5; 
+        // 80 wpm = 5 points
+        const typingScore = (typingStats.wpm / 80) * 5;     
+        const raw = blinkScore + typingScore;
+        setLoadScore(Math.min(Math.max(Math.round(raw), 0), 10));
+    }, [blinkData, typingStats]);
+
     const sendData = useCallback(async () => {
         try {
             const result = await analyze({
@@ -44,14 +56,15 @@ function App() {
                 typing_speed: typingStats.wpm,
                 error_rate: typingStats.errorRate,
                 mouse_movement: mouseMovement,
-                brow_stress: blinkData.brow_stress,
-                mouth_stress: blinkData.mouth_stress,
+                brow_stress: 0,
+                mouth_stress: 0,
             });
             setCurrentLoad(result.cognitive_load);
+
             setLoadHistory(prev => {
-                const newEntry = { index: prev.length, loadLevel: result.load_level };
+                const newEntry = { index: prev.length, loadLevel: result.load_level, wpm: typingStats.wpm, blink: blinkData.blink_rate };
                 const updated = [...prev, newEntry];
-                if (updated.length > 20) updated.shift();
+                if (updated.length > 50) updated.shift();
                 return updated;
             });
         } catch (err) {
@@ -99,7 +112,7 @@ function App() {
                         </section>
                         
                         <section className="space-y-6">
-                            <Dashboard currentLoad={currentLoad} loadHistory={loadHistory} alertSound={alertSound} />
+                            <Dashboard currentLoad={currentLoad} loadScore={loadScore} alertSound={alertSound} />
                             <StatsPanel
                                 blinkData={blinkData}
                                 typingWpm={typingStats.wpm}

@@ -3,20 +3,11 @@ import React from 'react';
 const StatsPanel = ({ blinkData, typingWpm, errorRate, mouseMovement }) => {
     return (
         <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4 p-4 bg-white rounded-lg shadow-sm border border-gray-200">
-                <div className={`p-2 border rounded ${blinkData.current_ear < 0.24 ? 'bg-blue-50 border-blue-400' : ''}`}>
-                    <div className="text-sm text-gray-500 font-medium">Blinks & Eyes</div>
-                    <div className="text-xl font-bold">{blinkData.blink_rate.toFixed(1)} <span className="text-xs">rate</span></div>
-                    <div className="text-[10px] text-gray-400">EAR: {blinkData.current_ear.toFixed(2)} | Blinks: {blinkData.blink_count}</div>
-                </div>
-                <div className="p-2 border rounded">
-                    <div className="text-sm text-gray-500 font-medium">Facial Stress</div>
-                    <div className="text-sm font-semibold">
-                        Brows: {blinkData.brow_stress < 0.12 ? '🔴 Furrowed' : '🟢 Relaxed'}
-                    </div>
-                    <div className="text-sm font-semibold">
-                        Mouth: {blinkData.mouth_stress > 0.15 ? '🔴 Open/Stress' : '🟢 Normal'}
-                    </div>
+            <div className="p-4 bg-white rounded-lg shadow-sm border border-gray-200">
+                <div className={`p-4 border rounded ${blinkData.current_ear < 0.24 ? 'bg-blue-50 border-blue-400' : ''}`}>
+                    <div className="text-sm text-gray-500 font-black uppercase mb-1">Live Blink Analysis</div>
+                    <div className="text-4xl font-black text-indigo-900">{blinkData.blink_rate.toFixed(1)} <span className="text-xs">rate</span></div>
+                    <div className="text-xs text-indigo-400 font-bold mt-1">EAR: {blinkData.current_ear.toFixed(2)} | TOTAL BLINKS: {blinkData.blink_count}</div>
                 </div>
             </div>
 

@@ -29,46 +29,46 @@ def eye_aspect_ratio(landmarks, eye_indices):
     return (v1 + v2) / (2.0 * h + 1e-6)
 
 class FaceAnalyzer:
-    def __init__(self, blink_thresh=0.25):
+    def __init__(self, blink_thresh=0.24):
         self.blink_thresh = blink_thresh
         self.blink_counter = 0
-        self.last_blink_time = 0
+        self.is_blinking = False
         self.blink_timestamps = deque(maxlen=100)
         
-        # Expressions
-        self.current_ear = 0.0
-        self.brow_dist_norm = 0.0
+        # Expressions (Unused but kept for structure)
+        self.current_ear = 0.3
+        self.brow_dist_norm = 0.15
         self.mouth_ratio = 0.0
 
     def process_frame(self, frame):
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = face_mesh.process(rgb)
         if not results.multi_face_landmarks:
-            return None
+            return 0.3
         
         h, w, _ = frame.shape
         landmarks = results.multi_face_landmarks[0].landmark
         points = np.array([(lm.x * w, lm.y * h) for lm in landmarks])
         
-        # 1. Blink Detection
+        # 1. Blink Detection on "Edge"
         left_ear = eye_aspect_ratio(points, LEFT_EYE)
         right_ear = eye_aspect_ratio(points, RIGHT_EYE)
-        self.current_ear = (left_ear + right_ear) / 2.0
+        self.current_ear = float((left_ear + right_ear) / 2.0)
         
-        now = time.time()
         if self.current_ear < self.blink_thresh:
-            if now - self.last_blink_time > 0.3:
-                self.blink_timestamps.append(now)
+            self.is_blinking = True
+        else:
+            if self.is_blinking:
+                # Blink ended, count it
                 self.blink_counter += 1
-                self.last_blink_time = now
+                self.blink_timestamps.append(time.time())
+                self.is_blinking = False
         
-        # 2. Brow Furrow (Distance between brows relative to head width)
-        # Head width approx distance between outer eyes [33, 263]
+        # Measurements
         head_width = np.linalg.norm(points[33] - points[263])
         brow_dist = np.linalg.norm(points[INNER_BROWS[0]] - points[INNER_BROWS[1]])
         self.brow_dist_norm = brow_dist / head_width if head_width > 0 else 1.0
         
-        # 3. Mouth Opening (Distance relative to face height [10, 152])
         face_height = np.linalg.norm(points[10] - points[152])
         mouth_dist = np.linalg.norm(points[INNER_LIPS[0]] - points[INNER_LIPS[1]])
         self.mouth_ratio = mouth_dist / face_height if face_height > 0 else 0.0
